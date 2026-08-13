@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +21,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=vl4bq5iqx1yy-8sb@4oadr4))&ovafjiw-_^6hylxa84rc6%&'
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'django-insecure-=vl4bq5iqx1yy-8sb@4oadr4))&ovafjiw-_^6hylxa84rc6%&'
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = []
+allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '')
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',') if host.strip()]
+else:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 
 # Application definition
@@ -160,10 +168,24 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 
 # Explicitly list allowed origins instead of CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:3000',   # Next.js dev server
-    'http://127.0.0.1:3000',  # alternate loopback form
-]
+cors_allowed_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+if cors_allowed_env:
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_allowed_env.split(',') if origin.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+    ]
+
+# Trust origins for CSRF protection
+csrf_trusted_env = os.environ.get('CSRF_TRUSTED_ORIGINS', '')
+if csrf_trusted_env:
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_trusted_env.split(',') if origin.strip()]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+    ]
 
 # Allow cookies / credentials if needed in later phases
 CORS_ALLOW_CREDENTIALS = True
@@ -176,4 +198,4 @@ CORS_ALLOW_CREDENTIALS = True
 # Base URL of the Next.js frontend.
 # Used by Meeting.invite_link to build shareable URLs without hardcoding localhost.
 # Override in production via an environment variable or a local_settings.py.
-FRONTEND_URL = 'http://localhost:3000'
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')

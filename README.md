@@ -196,3 +196,21 @@ This project showcases engineering proficiency in:
 - **Low-Latency Networks**: Setting up raw WebRTC negotiation (offer, answer, ICE exchange) without heavy third-party SDK dependencies.
 - **Connection Resilience**: Coding reconnect handlers with progressive backoff delays and managing browser memory leaks by cleaning up media tracks on unmount.
 - **Typing Integrity**: Maintaining a clean TypeScript codebase with precise payload interfaces, zero `any` variables, and DRF validation checks.
+
+---
+
+## 11. Deployment
+
+### Deployment Status
+- **Deployed URL**: **Deployment pending**
+- **Hosting Model**: The backend requires an ASGI server capable of persistent WebSocket connections. Standard serverless hosting (e.g. Vercel for backend, AWS Lambda) is not suitable for persistent WebSockets without an external pub/sub layer. It is recommended to use persistent container instances (e.g., Render, Railway, Fly.io, or AWS ECS/EC2).
+
+### Deployment Requirements
+1. **HTTPS / Secure Context**: Camera, microphone, and screen capture (`getUserMedia`, `getDisplayMedia`) require a secure HTTPS context in modern browsers. P2P WebRTC calls will not initialize over insecure HTTP connections.
+2. **ASGI Server (Daphne)**: The backend must be served using Daphne to support real-time WebSocket communication:
+   ```bash
+   python -m daphne -b 0.0.0.0 -p $PORT config.asgi:application
+   ```
+3. **Database**: Standard SQLite is suitable for this submission. The SQLite file must be stored on persistent disk storage (e.g., persistent volumes) to prevent data reset on server restarts.
+4. **Channel Layer Production Limitation**: The project currently uses `channels.layers.InMemoryChannelLayer` for local simplicity. Because it operates inside process memory, WebSocket broadcasts will fail if the application is scaled across multiple server containers. For production scaling, configure `channels_redis` to connect a Redis instance.
+5. **CORS / CSRF Settings**: Ensure all production allowed host headers, CORS origins, and CSRF trusted origins are set in the backend environment variables.
