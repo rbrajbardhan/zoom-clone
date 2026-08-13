@@ -1,0 +1,31 @@
+# OS / Editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Backend (Python / Django) generated files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.log
+backend/venv/
+backend/.venv/
+backend/env/
+backend/.env
+backend/db.sqlite3
+
+# Frontend (Node / Next.js) generated files
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+frontend/*.log
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
