@@ -50,7 +50,6 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
     setRecordingSize(0);
     setRecordingDuration(0);
 
-    // 1. Browser capability check
     if (typeof window === "undefined" || !window.MediaRecorder) {
       setRecordingError("Recording is not supported by this browser.");
       return;
@@ -66,7 +65,7 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
     setIsStarting(true);
 
     try {
-      // 2. Select tracks from local inputs (prefer shared screen video, fall back to camera)
+      // Prefer screen stream video track, fallback to camera
       const videoTrack = screenStream?.getVideoTracks()[0] || localStream?.getVideoTracks()[0];
       const audioTrack = localStream?.getAudioTracks()[0];
 
@@ -74,14 +73,12 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
         throw new Error("No active camera, microphone, or screen sharing tracks are available to record.");
       }
 
-      // 3. Create a dedicated recording MediaStream
       const recordStream = new MediaStream();
       if (videoTrack) recordStream.addTrack(videoTrack);
       if (audioTrack) recordStream.addTrack(audioTrack);
 
       chunksRef.current = [];
 
-      // 4. Initialize MediaRecorder
       const recorder = new MediaRecorder(recordStream, { mimeType: mime });
       mediaRecorderRef.current = recorder;
 
@@ -99,11 +96,9 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
         setIsStarting(false);
       };
 
-      // 5. Start capture with a 1000ms chunk timeslice
       recorder.start(1000);
       setIsRecording(true);
 
-      // 6. Launch elapsed timer interval
       timerRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
@@ -129,13 +124,11 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
   }, []);
 
   const stopRecording = useCallback(() => {
-    // 1. Terminate duration timer
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    // 2. Stop MediaRecorder
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
@@ -150,19 +143,17 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
     try {
       const url = URL.createObjectURL(blob);
       const timestamp = new Date().toISOString()
-        .replace(/:/g, "-") // sanitize filename invalid characters
-        .replace(/\..+/, ""); // remove milliseconds
+        .replace(/:/g, "-")
+        .replace(/\..+/, "");
 
       const filename = `zoom-clone-${meetingId}-${timestamp}.webm`;
 
-      // Create a temporary anchor to trigger local browser download
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.click();
       
-      // Cleanup anchor and object URL
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -181,7 +172,6 @@ export default function useMeetingRecording(): UseMeetingRecordingReturn {
     setRecordingError(null);
   }, []);
 
-  // Cleanup interval on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) {

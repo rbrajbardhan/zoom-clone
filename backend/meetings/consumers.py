@@ -16,46 +16,39 @@ class MeetingConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.meeting_id = self.scope['url_route']['kwargs']['meeting_id']
 
-        # 1. Validate format
+        # Validate meeting ID format before DB lookup
         if not MEETING_ID_REGEX.match(self.meeting_id):
-            await self.close(code=4000)  # Close with custom code for invalid format
+            await self.close(code=4000)
             return
 
-        # 2. Verify existence and joinability in the database
         status_val = await self.get_meeting_status(self.meeting_id)
         if status_val is None:
-            await self.close(code=4004)  # nonexistent
+            await self.close(code=4004)
             return
         if status_val in [Meeting.Status.COMPLETED, Meeting.Status.CANCELLED]:
-            await self.close(code=4003)  # reject connecting to completed/cancelled meetings
+            await self.close(code=4003)
             return
 
-        # 3. Create a safe group name
         sanitized_id = re.sub(r'[^a-zA-Z0-9_.-]', '', self.meeting_id)
         self.room_group_name = f"meeting_{sanitized_id}"
 
-        # 4. Join Channels group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
 
-        # 5. Accept the connection
         await self.accept()
         
-        # 6. Initialize transient connection identity
         self.display_name = None
         self.is_host = False
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
-            # 1. Leave Channels group
             await self.channel_layer.group_discard(
                 self.room_group_name,
                 self.channel_name
             )
 
-            # 2. Cleanup room state and elect next host if necessary
             if self.room_group_name in ROOMS:
                 room_state = ROOMS[self.room_group_name]
                 room_state["participants"].pop(self.channel_name, None)
@@ -71,7 +64,7 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                         room_state["host_channel_name"] = new_host_channel
                         room_state["host_display_name"] = new_host_display
 
-                        # Broadcast host handoff to everyone
+                        # Broadcast host handoff to the room
                         await self.channel_layer.group_send(
                             self.room_group_name,
                             {
@@ -84,7 +77,7 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 if not room_state["participants"]:
                     ROOMS.pop(self.room_group_name, None)
 
-            # 3. Broadcast leave event to remaining group members (only if connection identified itself)
+            # Only broadcast leave if this connection had identified itself
             if getattr(self, 'display_name', None) is not None:
                 await self.channel_layer.group_send(
                     self.room_group_name,
@@ -100,7 +93,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
         try:
             data = json.loads(text_data)
         except json.JSONDecodeError:
-            # Malformed JSON message
             return
 
         msg_type = data.get("type")
@@ -120,7 +112,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             
             self.display_name = display_name
 
-            # Setup transient ROOMS state
             room_state = ROOMS.setdefault(self.room_group_name, {
                 "host_channel_name": None,
                 "host_display_name": None,
@@ -138,10 +129,10 @@ class MeetingConsumer(AsyncWebsocketConsumer):
 
             self.is_host = is_host
 
-            # Update scheduled meeting to active in database
+            # Update scheduled meeting to active on first participant join
             await self.activate_meeting_if_scheduled()
 
-            # Notify other participants in the group of the identified joiner
+            # Broadcast join to all peers in the room (including sender, so they learn their own host status)
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -155,11 +146,10 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             )
 
         elif msg_type == "signal":
-            # Security precaution: block signal messages from unidentified peers
+            # Block signal messages from unidentified peers
             if getattr(self, 'display_name', None) is None:
                 return
 
-            # Broadcast signaling messages to other sockets in the meeting group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -171,14 +161,13 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             )
 
         elif msg_type == "chat_message":
-            # Security: reject messages if the socket is not yet identified
+            # Reject messages from unidentified connections
             if getattr(self, 'display_name', None) is None:
                 await self.close(code=4003)
                 return
 
             message = data.get("message")
 
-            # Validate type is string
             if not isinstance(message, str):
                 await self.send(text_data=json.dumps({
                     "type": "chat_error",
@@ -186,7 +175,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate whitespace-only and blank messages
             message_stripped = message.strip()
             if not message_stripped:
                 await self.send(text_data=json.dumps({
@@ -195,7 +183,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Validate message length limits (1000 characters)
             if len(message_stripped) > 1000:
                 await self.send(text_data=json.dumps({
                     "type": "chat_error",
@@ -203,10 +190,8 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Server-generated timestamp in ISO format
             timestamp = datetime.datetime.utcnow().isoformat() + "Z"
 
-            # Broadcast verified message to the meeting Channels group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -219,7 +204,7 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             )
 
         elif msg_type == "media_state":
-            # Security: reject messages if the socket is not yet identified
+            # Reject messages from unidentified connections
             if getattr(self, 'display_name', None) is None:
                 await self.close(code=4003)
                 return
@@ -228,7 +213,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             video_enabled = data.get("video_enabled")
             screen_sharing = data.get("screen_sharing")
 
-            # Validate boolean state fields
             if not isinstance(audio_enabled, bool) or not isinstance(video_enabled, bool) or not isinstance(screen_sharing, bool):
                 await self.send(text_data=json.dumps({
                     "type": "media_state_error",
@@ -236,7 +220,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Broadcast verified state to the room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -250,12 +233,11 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             )
 
         elif msg_type == "end_meeting":
-            # Security: check identity
+            # Only the host may end the meeting
             if getattr(self, 'display_name', None) is None:
                 await self.close(code=4003)
                 return
 
-            # Check host permission
             room_state = ROOMS.get(self.room_group_name)
             if not room_state or room_state["host_channel_name"] != self.channel_name:
                 await self.send(text_data=json.dumps({
@@ -265,10 +247,8 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Mutate status to completed in database
             await self.complete_meeting()
 
-            # Broadcast meeting_ended to group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -278,7 +258,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 }
             )
 
-    # Handler for participant joined broadcasts
     async def participant_joined_event(self, event):
         await self.send(text_data=json.dumps({
             "type": "participant_joined",
@@ -288,7 +267,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             "host_display_name": event.get("host_display_name"),
         }))
 
-    # Handler for participant left broadcasts
     async def participant_left_event(self, event):
         await self.send(text_data=json.dumps({
             "type": "participant_left",
@@ -296,9 +274,8 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             "display_name": event["display_name"],
         }))
 
-    # Handler for signaling message broadcasts
     async def signal_event(self, event):
-        # A socket does NOT receive its own signal message (exclude sender)
+        # Exclude sender from their own signal broadcast
         if self.channel_name != event["sender_channel_name"]:
             await self.send(text_data=json.dumps({
                 "type": "signal",
@@ -306,7 +283,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 "data": event["data"],
             }))
 
-    # Handler for chat message broadcasts
     async def chat_message_event(self, event):
         await self.send(text_data=json.dumps({
             "type": "chat_message",
@@ -316,9 +292,8 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             "timestamp": event["timestamp"],
         }))
 
-    # Handler for media state broadcasts
     async def media_state_event(self, event):
-        # Exclude sender from broadcast loop
+        # Exclude sender from media state broadcast
         if self.channel_name != event["sender_channel_name"]:
             await self.send(text_data=json.dumps({
                 "type": "media_state",
@@ -329,7 +304,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
                 "screen_sharing": event["screen_sharing"],
             }))
 
-    # Handler for host changed broadcasts
     async def host_changed_event(self, event):
         await self.send(text_data=json.dumps({
             "type": "host_changed",
@@ -337,7 +311,6 @@ class MeetingConsumer(AsyncWebsocketConsumer):
             "display_name": event["display_name"]
         }))
 
-    # Handler for meeting ended broadcasts
     async def meeting_ended_event(self, event):
         await self.send(text_data=json.dumps({
             "type": "meeting_ended",

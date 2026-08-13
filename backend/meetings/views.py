@@ -102,18 +102,15 @@ class MeetingListCreateView(APIView):
     """
 
     def get(self, request) -> Response:
-        """Return all meetings ordered by newest created_at first."""
         meetings = Meeting.objects.all()  # Meta.ordering = ['-created_at']
         serializer = MeetingSerializer(meetings, many=True)
         return Response(serializer.data)
 
     def post(self, request) -> Response:
-        """Create a new meeting (instant or scheduled)."""
         serializer = MeetingSerializer(data=request.data)
         if serializer.is_valid():
             meeting = serializer.save()
-            # Re-serialize the saved instance so the response includes
-            # the auto-generated meeting_id and invite_link.
+            # Re-serialize so the response includes the auto-generated meeting_id and invite_link
             return Response(
                 MeetingSerializer(meeting).data,
                 status=status.HTTP_201_CREATED,
@@ -163,17 +160,14 @@ class MeetingJoinView(APIView):
     """
 
     def post(self, request, meeting_id: str) -> Response:
-        # Step 1: Resolve the meeting from the URL.
         meeting = get_meeting_or_404(meeting_id)
 
-        # Reject completed or cancelled meetings
         if meeting.status in [Meeting.Status.COMPLETED, Meeting.Status.CANCELLED]:
             return Response(
                 {"detail": "This meeting has already ended."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Step 2: Validate the display_name from the request body.
         join_serializer = ParticipantJoinSerializer(data=request.data)
         if not join_serializer.is_valid():
             return Response(
@@ -181,10 +175,8 @@ class MeetingJoinView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Step 3: Create the participant, injecting the meeting FK server-side.
         participant = join_serializer.save(meeting=meeting)
 
-        # Step 4: Return the full participant record using the read serializer.
         response_serializer = ParticipantSerializer(participant)
         return Response(
             response_serializer.data,

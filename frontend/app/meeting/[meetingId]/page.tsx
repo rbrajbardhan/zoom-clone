@@ -25,12 +25,11 @@ export default function MeetingRoomPage({ params }: PageProps) {
   const { meetingId } = React.use(params);
   const router = useRouter();
 
-  // 1. Lifecycle & Verification states
   const [isVerifying, setIsVerifying] = useState<boolean>(true);
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [meetingInfo, setMeetingInfo] = useState<Meeting | null>(null);
   
-  // Transition flag: user has clicked Join Meeting and REST join completed successfully
+  // Set to true only after the user clicks Join and the REST join call succeeds
   const [isJoined, setIsJoined] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -40,10 +39,9 @@ export default function MeetingRoomPage({ params }: PageProps) {
   const [isLocalHost, setIsLocalHost] = useState<boolean>(false);
   const [showEndConfirmation, setShowEndConfirmation] = useState<boolean>(false);
 
-  // Pre-join camera/mic toggle states
   const [mediaEnabled, setMediaEnabled] = useState<boolean>(true);
 
-  // 2. Resolve local participant's display name from sessionStorage (SSR safe)
+  // Hydrate display name from sessionStorage; guarded for SSR
   const [localDisplayName, setLocalDisplayName] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       return sessionStorage.getItem(`meeting-display-name:${meetingId}`);
@@ -54,7 +52,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
   const [editName, setEditName] = useState<string>(localDisplayName || "");
   const [nameError, setNameError] = useState<string | null>(null);
 
-  // 3. Generate a temporary session ID for the local participant on mount
   const [localSessionId] = useState<string>(() => {
     if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID) {
       return window.crypto.randomUUID();
@@ -62,11 +59,9 @@ export default function MeetingRoomPage({ params }: PageProps) {
     return Math.random().toString(36).substring(2, 15);
   });
 
-  // 4. Track active meeting participants
   const [remoteParticipant, setRemoteParticipant] = useState<MeetingParticipant | null>(null);
   const [isParticipantsOpen, setIsParticipantsOpen] = useState<boolean>(false);
 
-  // 5. Initialize in-meeting chat state management (deferred access via isJoined check in layout)
   const {
     messages,
     unreadCount,
@@ -79,7 +74,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     setError: setChatError,
   } = useMeetingChat();
 
-  // 6. Initialize meeting local recording state management
   const {
     isRecording,
     isStarting: isRecordingStarting,
@@ -93,10 +87,8 @@ export default function MeetingRoomPage({ params }: PageProps) {
     discardRecording,
   } = useMeetingRecording();
 
-  // Ref to hold the active message handler callback to solve lexical ordering and linter issues
+  // Indirection ref lets us define the message handler after hooks that it depends on
   const onMessageReceivedRef = useRef<((message: WebSocketMessage) => void) | null>(null);
-
-  // Verify meeting joinability on mount using getMeeting API client
   useEffect(() => {
     let active = true;
     const checkMeeting = async () => {
@@ -129,10 +121,9 @@ export default function MeetingRoomPage({ params }: PageProps) {
     };
   }, [meetingId]);
 
-  // Message dispatcher to route WebSocket events into useWebRTC hook and chat hooks
   const webRTCMessageReceivedRef = useRef<((message: WebSocketMessage) => void) | null>(null);
 
-  // 10. Initialize WebSocket signaling hook (deferred until display name is resolved, room verified, and user joined)
+  // Socket connection is deferred until verified and joined
   const socketDisplayName = (isVerifying || meetingError || !isJoined) ? null : localDisplayName;
   const { status: socketStatus, logs: socketLogs, sendSignal, sendIdentity, sendChatMessage, sendMediaState, endMeeting } = useMeetingSocket(
     meetingId,
@@ -142,7 +133,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     }
   );
 
-  // 11. Initialize camera/microphone hardware capture (deferred until validated and mediaEnabled)
   const localMediaEnabled = !isVerifying && !meetingError && mediaEnabled;
   const {
     stream: localStream,
@@ -155,7 +145,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     stopMedia,
   } = useLocalMedia(localMediaEnabled);
 
-  // 12. Initialize WebRTC peer-to-peer connection hook (deferred until joined)
   const {
     remoteStream,
     connectionState: rtcStatus,
@@ -170,7 +159,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     isLocalHost
   );
 
-  // 13. Initialize Screen Sharing hook
   const {
     isScreenSharing,
     isStarting: isScreenStarting,
@@ -180,9 +168,8 @@ export default function MeetingRoomPage({ params }: PageProps) {
     stopScreenShare,
   } = useScreenShare(localStream, replaceVideoTrack);
 
-  // Callback to receive WebSocket events declared after media hooks so it can lexically reference stopMedia and screenStream
+  // Declared after media hooks so it can close over stopMedia and screenStream
   const handleWebSocketMessage = (msg: WebSocketMessage) => {
-    // Intercept identity-related events to update local participant lists
     if (msg.type === "participant_joined") {
       if (msg.display_name === localDisplayName) {
         if (msg.is_host) {
@@ -201,7 +188,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
         });
       }
 
-      // Sync local host state if server specifies a host display name
+      // Server sends host_display_name on join to resolve initial host state
       if (msg.host_display_name) {
         if (msg.host_display_name === localDisplayName) {
           setIsLocalHost(true);
@@ -258,11 +245,8 @@ export default function MeetingRoomPage({ params }: PageProps) {
       setEndedByHost(msg.ended_by);
       setIsMeetingEnded(true);
       
-      // Stop recording capture handle if running
       stopRecording();
-      // Release capture hardware
       stopMedia();
-      // Release screen share hardware if active
       if (screenStream) {
         screenStream.getTracks().forEach((track) => track.stop());
       }
@@ -270,18 +254,15 @@ export default function MeetingRoomPage({ params }: PageProps) {
       console.error(`Meeting error: ${msg.message}`);
     }
 
-    // Forward signaling payload directly to WebRTC handler
     if (webRTCMessageReceivedRef.current) {
       webRTCMessageReceivedRef.current(msg);
     }
   };
 
-  // Assign dynamic callback on each render in an effect
   useEffect(() => {
     onMessageReceivedRef.current = handleWebSocketMessage;
   });
 
-  // Combine socket signaling logs, screen errors, and recording alerts dynamically for display
   const logs = [...socketLogs];
   if (screenError) {
     logs.push(`Screen Share: ${screenError}`);
@@ -290,7 +271,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     logs.push(`Recording Error: ${recordingError}`);
   }
 
-  // Trigger WebSocket identity registration handshake on connection open
   useEffect(() => {
     if (socketStatus === "Connected" && localDisplayName) {
       console.log("WebSocket connection established. Sending identity...");
@@ -298,14 +278,12 @@ export default function MeetingRoomPage({ params }: PageProps) {
     }
   }, [socketStatus, localDisplayName, sendIdentity]);
 
-  // Synchronize local microphone, camera, and screen sharing states with peers
   useEffect(() => {
     if (socketStatus === "Connected" && localDisplayName) {
       sendMediaState(isAudioEnabled, isVideoEnabled, isScreenSharing);
     }
   }, [isAudioEnabled, isVideoEnabled, isScreenSharing, socketStatus, localDisplayName, sendMediaState]);
 
-  // Validation function for display name editing
   const validateName = (val: string): boolean => {
     const trimmed = val.trim();
     if (!trimmed) {
@@ -333,10 +311,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     setJoinError(null);
 
     try {
-      // Validate join session with the server and create Participant record
       await joinMeeting(meetingId, { display_name: name });
-      
-      // Success: Save temporary name to sessionStorage
       sessionStorage.setItem(`meeting-display-name:${meetingId}`, name);
       setLocalDisplayName(name);
       setIsJoined(true);
@@ -349,7 +324,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
   };
 
   const handleJoinWithoutMedia = async () => {
-    // Disable media capture first to release tracks
     setMediaEnabled(false);
     stopMedia();
 
@@ -373,19 +347,15 @@ export default function MeetingRoomPage({ params }: PageProps) {
   };
 
   const handleLeave = () => {
-    // Stop recording capture handle if running
     stopRecording();
-    // Release capture hardware
     stopMedia();
-    // Release screen share hardware if active
     if (screenStream) {
       screenStream.getTracks().forEach((track) => track.stop());
     }
-    // Redirect back to dashboard
     router.push("/");
   };
 
-  // Escape key handler to close drawers/panels
+  // Keyboard shortcut: Escape closes any open sidepanel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -401,7 +371,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     setShowEndConfirmation(true);
   };
 
-  // Mutually exclusive sidebar drawers: opening Chat closes Participants and vice-versa
+  // Chat and Participants panels are mutually exclusive
   const handleToggleParticipants = () => {
     const next = !isParticipantsOpen;
     setIsParticipantsOpen(next);
@@ -430,7 +400,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     sendMessage(msg, sendChatMessage);
   };
 
-  // Render verifying loaders
+
   if (isVerifying) {
     return (
       <main className="min-h-screen bg-[#121212] flex flex-col items-center justify-center p-6 text-center select-none text-white">
@@ -445,7 +415,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     );
   }
 
-  // Render ended or cancelled splash screens
+
   if (meetingError || isMeetingEnded) {
     let errorTitle = "Meeting Room";
     let errorMessage = meetingError;
@@ -492,7 +462,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     );
   }
 
-  // Render Pre-Join / Waiting Room UI if isJoined is false
+
   if (!isJoined) {
     const formattedDuration = meetingInfo
       ? `${meetingInfo.duration_minutes} minutes`
@@ -676,7 +646,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     );
   }
 
-  // Build the reactive participant list once joined
   const localParticipant: MeetingParticipant = {
     id: localSessionId,
     displayName: localDisplayName || "You",
@@ -690,8 +659,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
   const allParticipants = remoteParticipant
     ? [localParticipant, remoteParticipant]
     : [localParticipant];
-
-  // Render meeting room stage view once user explicitly joins
   return (
     <div className="min-h-screen max-h-screen bg-[#121212] flex flex-col justify-between overflow-hidden relative select-none">
       {/* Top Header Section */}

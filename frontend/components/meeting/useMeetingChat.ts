@@ -30,7 +30,6 @@ export default function useMeetingChat(): UseMeetingChatReturn {
 
   const isChatOpenRef = useRef<boolean>(isChatOpen);
 
-  // Sync ref with open/close toggles
   useEffect(() => {
     isChatOpenRef.current = isChatOpen;
     if (isChatOpen) {
@@ -52,17 +51,15 @@ export default function useMeetingChat(): UseMeetingChatReturn {
       return;
     }
 
-    // Forward to WebSocket socket sender
     socketSend(trimmed);
   }, []);
 
   const receiveMessage = useCallback((msg: ChatMessage, localDisplayName: string | null) => {
     const isLocal = msg.display_name === localDisplayName;
-    // Generate a unique hash id based on message content and timestamp
     const msgId = `${msg.display_name}-${msg.timestamp}-${msg.message}`;
 
     setMessages((prev) => {
-      // De-duplicate in case of multiple triggers
+      // Prevent duplicate message renders
       if (prev.some((m) => m.id === msgId)) {
         return prev;
       }
@@ -76,7 +73,7 @@ export default function useMeetingChat(): UseMeetingChatReturn {
       return [...prev, newMsg];
     });
 
-    // Increment unread count only if the Chat drawer is closed and it is a remote message
+    // Only track unread counts for remote messages while chat panel is closed
     if (!isChatOpenRef.current && !isLocal) {
       setUnreadCount((prev) => prev + 1);
     }

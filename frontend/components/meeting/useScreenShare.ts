@@ -33,13 +33,10 @@ export default function useScreenShare(
     activeStream: MediaStream | null,
     activeTrack: MediaStreamTrack | null
   ) => {
-    // 1. Get original camera video track
     const cameraTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
 
-    // 2. Restore camera video sender
     await replaceVideoTrack(cameraTrack);
 
-    // 3. Stop display track hardware
     if (activeTrack) {
       activeTrack.stop();
     }
@@ -47,13 +44,11 @@ export default function useScreenShare(
       activeStream.getTracks().forEach((track) => track.stop());
     }
 
-    // 4. Reset states
     setScreenStream(null);
     setIsScreenSharing(false);
   }, [replaceVideoTrack]);
 
   const startScreenShare = async () => {
-    // 1. Browser capability check
     if (
       typeof window === "undefined" ||
       !navigator.mediaDevices ||
@@ -67,7 +62,6 @@ export default function useScreenShare(
     setError(null);
 
     try {
-      // 2. Query display media (video only, audio false)
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: false,
@@ -78,16 +72,14 @@ export default function useScreenShare(
         throw new Error("No video track found in screen stream.");
       }
 
-      // 3. Replace video track in peer connection
       await replaceVideoTrack(screenTrack);
 
       setScreenStream(stream);
       setIsScreenSharing(true);
 
-      // 4. Handle native browser "Stop sharing" button click
+      // Handle native browser "Stop sharing" bar click
       screenTrack.onended = () => {
         console.log("Screen share track ended natively by browser.");
-        // Use current ref streams to avoid capture race conditions
         handleStopSharing(stream, screenTrack);
       };
 
@@ -95,7 +87,6 @@ export default function useScreenShare(
       console.error("Screen share start error:", err);
       const errorName = (err as { name?: string }).name;
 
-      // 5. User-friendly error mapping
       if (errorName === "NotAllowedError") {
         setError("Screen sharing permission was denied.");
       } else if (errorName === "AbortError") {
@@ -118,7 +109,7 @@ export default function useScreenShare(
     await handleStopSharing(currentStream, currentTrack);
   };
 
-  // Teardown display capture on hook unmount (avoids background leakage)
+  // Prevent background display stream leaks on unmount
   useEffect(() => {
     return () => {
       const activeStream = screenStreamRef.current;

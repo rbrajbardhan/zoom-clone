@@ -35,7 +35,6 @@ export default function VideoStage({
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // 1. Bind local camera stream
   useEffect(() => {
     const el = localVideoRef.current;
     if (el) {
@@ -47,7 +46,6 @@ export default function VideoStage({
     }
   }, [stream, isVideoEnabled]);
 
-  // 2. Bind remote stream (camera or screen)
   useEffect(() => {
     const el = remoteVideoRef.current;
     if (el) {
@@ -55,7 +53,6 @@ export default function VideoStage({
     }
   }, [remoteStream]);
 
-  // 3. Bind local screen stream
   useEffect(() => {
     const el = screenVideoRef.current;
     if (el) {
@@ -121,9 +118,7 @@ export default function VideoStage({
                     You are sharing your screen
                   </div>
 
-                  {/* PiP Overlay */}
-                  {remoteStream ? (
-                    // Remote participant camera in PiP (NOT mirrored)
+                    {remoteStream ? (
                     <div className="absolute bottom-3 right-3 w-1/4 min-w-[90px] sm:min-w-[130px] aspect-video bg-[#1e1e1e] border border-[#3e3e3e] rounded-lg overflow-hidden shadow-lg flex items-center justify-center select-none z-20">
                       <video
                         ref={remoteVideoRef}
@@ -136,8 +131,7 @@ export default function VideoStage({
                         {remoteDisplayName || "Remote"}
                       </div>
                     </div>
-                  ) : (
-                    // Local camera preview in PiP (mirrored)
+                    ) : (
                     <div className="absolute bottom-3 right-3 w-1/4 min-w-[90px] sm:min-w-[130px] aspect-video bg-[#1e1e1e] border border-[#3e3e3e] rounded-lg overflow-hidden shadow-lg flex items-center justify-center select-none z-20">
                       {stream && isVideoEnabled ? (
                         <video
@@ -163,10 +157,8 @@ export default function VideoStage({
                   )}
                 </div>
               ) : (
-                // 2. NORMAL CALL (NO LOCAL SCREEN SHARE)
                 <div className="w-full h-full relative">
                   {remoteStream ? (
-                    // Two Participants: Remote Stream Main (NOT mirrored, NOT muted)
                     <div className="w-full h-full relative">
                       <video
                         ref={remoteVideoRef}
@@ -204,7 +196,6 @@ export default function VideoStage({
                       </div>
                     </div>
                   ) : (
-                    // Alone in room: Local camera stream occupies main area (mirrored)
                     <div className="w-full h-full relative flex items-center justify-center">
                       {stream && isVideoEnabled ? (
                         <>

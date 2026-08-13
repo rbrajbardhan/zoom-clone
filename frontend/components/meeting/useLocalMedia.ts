@@ -33,7 +33,6 @@ export default function useLocalMedia(enabled: boolean = true): UseLocalMediaRet
       setIsLoading(true);
       setError(null);
 
-      // 1. Browser capability check
       if (
         typeof window === "undefined" ||
         !navigator.mediaDevices ||
@@ -47,7 +46,6 @@ export default function useLocalMedia(enabled: boolean = true): UseLocalMediaRet
       }
 
       try {
-        // 2. Request camera and microphone access
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: true,
@@ -59,7 +57,7 @@ export default function useLocalMedia(enabled: boolean = true): UseLocalMediaRet
           setIsAudioEnabled(true);
           setIsVideoEnabled(true);
         } else {
-          // Clean up if component was unmounted before promise finished
+          // Stop tracks if the component unmounted before the promise resolved
           mediaStream.getTracks().forEach((track) => track.stop());
         }
       } catch (err: unknown) {
@@ -67,7 +65,6 @@ export default function useLocalMedia(enabled: boolean = true): UseLocalMediaRet
           console.error("Local media access error:", err);
           const errorName = (err as { name?: string }).name;
 
-          // 3. User-friendly error mapping
           if (errorName === "NotAllowedError" || errorName === "PermissionDeniedError") {
             setError("Camera and microphone permission was denied.");
           } else if (errorName === "NotFoundError" || errorName === "DevicesNotFoundError") {
@@ -87,7 +84,6 @@ export default function useLocalMedia(enabled: boolean = true): UseLocalMediaRet
 
     getMedia();
 
-    // 4. Cleanup on unmount
     return () => {
       active = false;
       const currentStream = streamRef.current;

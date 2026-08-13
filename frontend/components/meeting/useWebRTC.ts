@@ -26,10 +26,10 @@ export default function useWebRTC(
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   
-  // Track replacement ref to store screen share track if it overrides camera
+  // Caches screen share track to swap back to camera later
   const replacedVideoTrackRef = useRef<MediaStreamTrack | null>(null);
 
-  // Use refs to prevent recreating the peer connection when input flags or stream refs toggle
+  // Prevent peer connection recreation on input/stream changes
   const localStreamRef = useRef<MediaStream | null>(localStream);
   const isSocketConnectedRef = useRef<boolean>(isSocketConnected);
   const isHostRef = useRef<boolean>(isHost);
@@ -103,13 +103,11 @@ export default function useWebRTC(
       }
     };
 
-    // Add local tracks to send to the remote peer
     const currentLocalStream = localStreamRef.current;
     if (currentLocalStream) {
       console.log("Adding local tracks to PeerConnection...");
       currentLocalStream.getTracks().forEach((track) => {
         if (track.kind === "video" && replacedVideoTrackRef.current) {
-          // If screen sharing is already active, send the screen track instead of the camera track
           console.log("PeerConnection: Adding screen share video track override.");
           pc.addTrack(replacedVideoTrackRef.current, currentLocalStream);
         } else {
@@ -130,7 +128,6 @@ export default function useWebRTC(
       return;
     }
 
-    // Find the video sender in the active peer connection
     const senders = pc.getSenders();
     const videoSender = senders.find((s) => s.track?.kind === "video");
     if (videoSender) {
@@ -203,7 +200,6 @@ export default function useWebRTC(
     }
   }, [getOrCreatePeerConnection, closePeerConnection, processPendingCandidates, sendSignal]);
 
-  // Register callback reference to intercept incoming websocket messages
   useEffect(() => {
     onMessageReceivedRef.current = (message: WebSocketMessage) => {
       handleIncomingMessage(message);
@@ -213,7 +209,6 @@ export default function useWebRTC(
     };
   }, [handleIncomingMessage, onMessageReceivedRef]);
 
-  // Hook teardown
   useEffect(() => {
     return () => {
       closePeerConnection();

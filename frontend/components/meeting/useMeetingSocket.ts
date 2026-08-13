@@ -29,7 +29,7 @@ export default function useMeetingSocket(
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isIntentionalCloseRef = useRef<boolean>(false);
 
-  // Use a ref for the message handler to avoid useEffect teardowns on function reference updates
+  // Prevent websocket listener teardowns on callback updates
   const messageCallbackRef = useRef(onMessageReceived);
   useEffect(() => {
     messageCallbackRef.current = onMessageReceived;
@@ -41,11 +41,9 @@ export default function useMeetingSocket(
     isIntentionalCloseRef.current = false;
     reconnectAttemptRef.current = 0;
 
-    // Derive WebSocket protocol and base URL from the frontend API URL
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
     let wsBaseUrl = apiBaseUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
     
-    // Safely remove any trailing /api or /api/
     wsBaseUrl = wsBaseUrl.replace(/\/api\/?$/, "");
     
     const wsUrl = `${wsBaseUrl}/ws/meetings/${meetingId}/`;
@@ -120,7 +118,6 @@ export default function useMeetingSocket(
             setLogs((prev) => [...prev, `[Meeting Error] ${message.code}: ${message.message}`]);
           }
 
-          // Invoke callback
           if (messageCallbackRef.current) {
             messageCallbackRef.current(message);
           }
@@ -135,7 +132,6 @@ export default function useMeetingSocket(
       };
 
       socket.onclose = (event) => {
-        // If the server rejected the connection due to an invalid/nonexistent meeting ID or bad display name
         if (event.code === 4004 || event.code === 4000 || event.code === 4003) {
           isIntentionalCloseRef.current = true;
           setStatus("Error");
@@ -153,7 +149,7 @@ export default function useMeetingSocket(
           return;
         }
 
-        // Automatic bounded retry strategy with exponential backoff
+        // Bounded reconnection with exponential backoff
         if (reconnectAttemptRef.current < 5) {
           reconnectAttemptRef.current += 1;
           
@@ -178,7 +174,6 @@ export default function useMeetingSocket(
 
     attemptConnect();
 
-    // Cleanup: close WebSocket and clear timers on unmount
     return () => {
       isIntentionalCloseRef.current = true;
       if (reconnectTimerRef.current) {
