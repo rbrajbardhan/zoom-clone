@@ -166,7 +166,8 @@ export default function MeetingRoomPage({ params }: PageProps) {
     localStream,
     isJoined && socketStatus === "Connected",
     sendSignal,
-    webRTCMessageReceivedRef
+    webRTCMessageReceivedRef,
+    isLocalHost
   );
 
   // 13. Initialize Screen Sharing hook

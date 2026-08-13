@@ -93,7 +93,9 @@ export default function VideoStage({
                 </svg>
               </div>
               <h3 className="text-base font-bold text-red-400">
-                Camera and microphone access is unavailable
+                {error === "Unable to establish a video connection." || error === "Unable to negotiate media connection."
+                  ? "Connection failed"
+                  : "Camera and microphone access is unavailable"}
               </h3>
               <p className="text-xs text-gray-400 leading-normal">
                 {error}

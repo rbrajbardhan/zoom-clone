@@ -16,7 +16,8 @@ export default function useWebRTC(
     signalType: "offer" | "answer" | "ice-candidate",
     data: { sdp: RTCSessionDescriptionInit } | { candidate: RTCIceCandidateInit }
   ) => void,
-  onMessageReceivedRef: React.MutableRefObject<((message: WebSocketMessage) => void) | null>
+  onMessageReceivedRef: React.MutableRefObject<((message: WebSocketMessage) => void) | null>,
+  isHost: boolean
 ): UseWebRTCReturn {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>("new");
@@ -31,6 +32,7 @@ export default function useWebRTC(
   // Use refs to prevent recreating the peer connection when input flags or stream refs toggle
   const localStreamRef = useRef<MediaStream | null>(localStream);
   const isSocketConnectedRef = useRef<boolean>(isSocketConnected);
+  const isHostRef = useRef<boolean>(isHost);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -39,6 +41,10 @@ export default function useWebRTC(
   useEffect(() => {
     isSocketConnectedRef.current = isSocketConnected;
   }, [isSocketConnected]);
+
+  useEffect(() => {
+    isHostRef.current = isHost;
+  }, [isHost]);
 
   const closePeerConnection = useCallback(() => {
     const pc = peerConnectionRef.current;
@@ -151,11 +157,15 @@ export default function useWebRTC(
   const handleIncomingMessage = useCallback(async (message: WebSocketMessage) => {
     try {
       if (message.type === "participant_joined") {
-        console.log("Participant joined room. Generating WebRTC offer...");
-        const pc = getOrCreatePeerConnection();
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        sendSignal("offer", { sdp: offer });
+        if (isHostRef.current) {
+          console.log("Participant joined room and local is Host. Generating WebRTC offer...");
+          const pc = getOrCreatePeerConnection();
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          sendSignal("offer", { sdp: offer });
+        } else {
+          console.log("Participant joined room and local is NOT Host. Waiting for offer...");
+        }
       } else if (message.type === "participant_left") {
         console.log("Remote participant left. Terminating WebRTC connection...");
         closePeerConnection();
