@@ -78,7 +78,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     isRecording,
     isStarting: isRecordingStarting,
     recordingDuration,
-    recordingError,
+    recordingError: _recordingError,
     recordingBlob,
     recordingSize,
     startRecording,
@@ -125,7 +125,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
 
   // Socket connection is deferred until verified and joined
   const socketDisplayName = (isVerifying || meetingError || !isJoined) ? null : localDisplayName;
-  const { status: socketStatus, logs: socketLogs, sendSignal, sendIdentity, sendChatMessage, sendMediaState, endMeeting } = useMeetingSocket(
+  const { status: socketStatus, logs: _socketLogs, sendSignal, sendIdentity, sendChatMessage, sendMediaState, endMeeting } = useMeetingSocket(
     meetingId,
     socketDisplayName,
     (msg) => {
@@ -163,7 +163,7 @@ export default function MeetingRoomPage({ params }: PageProps) {
     isScreenSharing,
     isStarting: isScreenStarting,
     screenStream,
-    error: screenError,
+    error: _screenError,
     startScreenShare,
     stopScreenShare,
   } = useScreenShare(localStream, replaceVideoTrack);
@@ -263,13 +263,6 @@ export default function MeetingRoomPage({ params }: PageProps) {
     onMessageReceivedRef.current = handleWebSocketMessage;
   });
 
-  const logs = [...socketLogs];
-  if (screenError) {
-    logs.push(`Screen Share: ${screenError}`);
-  }
-  if (recordingError) {
-    logs.push(`Recording Error: ${recordingError}`);
-  }
 
   useEffect(() => {
     if (socketStatus === "Connected" && localDisplayName) {
@@ -674,15 +667,11 @@ export default function MeetingRoomPage({ params }: PageProps) {
       {/* Main content split between video grid and participant sidebar */}
       <div className="flex-1 flex overflow-hidden relative">
         <VideoStage
-          meetingId={meetingId}
-          connectionStatus={socketStatus}
-          logs={logs}
           stream={localStream}
           isLoading={isLocalMediaLoading}
           error={localMediaError || rtcError}
           isVideoEnabled={isVideoEnabled}
           remoteStream={remoteStream}
-          rtcStatus={rtcStatus}
           localDisplayName={localDisplayName || "You"}
           remoteDisplayName={remoteParticipant?.displayName ?? null}
           isScreenSharing={isScreenSharing}
